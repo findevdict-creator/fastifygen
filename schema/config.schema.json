@@ -1,0 +1,242 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/findevdict-creator/fastifygen/schema/config.schema.json",
+  "title": "fastifygen configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "database"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "database": {
+      "title": "Database",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "url": {
+          "type": "string",
+          "description": "Postgres connection string. Use ${ENV_VAR} to keep secrets out of the file."
+        },
+        "host": {
+          "type": "string"
+        },
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        },
+        "user": {
+          "type": "string"
+        },
+        "password": {
+          "type": "string"
+        },
+        "database": {
+          "type": "string"
+        },
+        "ssl": {
+          "type": "boolean"
+        },
+        "schema": {
+          "type": "string",
+          "default": "public",
+          "description": "Postgres schema to introspect."
+        }
+      },
+      "anyOf": [
+        {
+          "required": [
+            "url"
+          ]
+        },
+        {
+          "required": [
+            "host",
+            "database"
+          ]
+        }
+      ],
+      "default": {}
+    },
+    "output": {
+      "title": "Output",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "dir": {
+          "type": "string",
+          "default": "./generated",
+          "description": "Relative to config.json."
+        }
+      },
+      "default": {}
+    },
+    "tables": {
+      "title": "Tables",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "include": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "*"
+          ],
+          "description": "Glob patterns of tables to include."
+        },
+        "exclude": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "knex_migrations",
+            "knex_migrations_lock"
+          ],
+          "description": "Glob patterns of tables to leave out. Wins over include."
+        }
+      },
+      "default": {}
+    },
+    "api": {
+      "title": "API",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "prefix": {
+          "type": "string",
+          "default": "/items",
+          "pattern": "^/"
+        },
+        "defaultLimit": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 100
+        },
+        "maxLimit": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 1000
+        }
+      },
+      "default": {}
+    },
+    "tenancy": {
+      "title": "Multitenancy",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "column": {
+          "type": "string",
+          "default": "tenant_id",
+          "description": "Tables with this column are tenant-scoped."
+        },
+        "rls": {
+          "type": "boolean",
+          "default": true,
+          "description": "Generate row-level security policies."
+        },
+        "settingName": {
+          "type": "string",
+          "default": "app.tenant_id",
+          "pattern": "^[a-z_][a-z0-9_]*\\.[a-z_][a-z0-9_]*$",
+          "description": "Postgres setting the RLS policy reads."
+        }
+      },
+      "default": {}
+    },
+    "auth": {
+      "title": "Auth",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": [
+            "jwt",
+            "header",
+            "none"
+          ],
+          "default": "jwt"
+        },
+        "tenantClaim": {
+          "type": "string",
+          "default": "tenant_id"
+        },
+        "permissionsClaim": {
+          "type": "string",
+          "default": "permissions"
+        }
+      },
+      "default": {}
+    },
+    "permissions": {
+      "title": "Permissions",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "format": {
+          "type": "string",
+          "default": "{action}:{table}",
+          "description": "Permission name template. {action} and {table} are replaced."
+        },
+        "actions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "create",
+              "read",
+              "update",
+              "delete"
+            ]
+          },
+          "uniqueItems": true,
+          "default": [
+            "create",
+            "read",
+            "update",
+            "delete"
+          ]
+        }
+      },
+      "default": {}
+    },
+    "overrides": {
+      "title": "Per-table overrides",
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "skip": {
+            "type": "boolean"
+          },
+          "readOnly": {
+            "type": "boolean"
+          },
+          "hiddenColumns": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "routeName": {
+            "type": "string",
+            "pattern": "^[a-z0-9_-]+$"
+          }
+        }
+      },
+      "default": {}
+    }
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "$schema": "../schema/config.schema.json",
+  "database": {
+    "url": "${DATABASE_URL}",
+    "schema": "public"
+  },
+  "output": {
+    "dir": "./generated"
+  },
+  "tables": {
+    "include": ["*"],
+    "exclude": ["knex_migrations", "knex_migrations_lock"]
+  },
+  "api": {
+    "prefix": "/items",
+    "defaultLimit": 100,
+    "maxLimit": 1000
+  },
+  "tenancy": {
+    "enabled": true,
+    "column": "tenant_id",
+    "rls": true,
+    "settingName": "app.tenant_id"
+  },
+  "auth": {
+    "mode": "jwt",
+    "tenantClaim": "tenant_id",
+    "permissionsClaim": "permissions"
+  },
+  "permissions": {
+    "format": "{action}:{table}",
+    "actions": ["create", "read", "update", "delete"]
+  },
+  "overrides": {
+    "users": { "hiddenColumns": ["password_hash"] },
+    "audit_log": { "readOnly": true }
+  }
+}
