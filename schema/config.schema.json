@@ -21,24 +21,30 @@
           "description": "Postgres connection string. Use ${ENV_VAR} to keep secrets out of the file."
         },
         "host": {
-          "type": "string"
+          "type": "string",
+          "description": "Server host, when not using url."
         },
         "port": {
           "type": "integer",
           "minimum": 1,
-          "maximum": 65535
+          "maximum": 65535,
+          "description": "Server port (Postgres default: 5432)."
         },
         "user": {
-          "type": "string"
+          "type": "string",
+          "description": "Database user."
         },
         "password": {
-          "type": "string"
+          "type": "string",
+          "description": "Database password. Prefer ${DB_PASSWORD}."
         },
         "database": {
-          "type": "string"
+          "type": "string",
+          "description": "Database name, when not using url."
         },
         "ssl": {
-          "type": "boolean"
+          "type": "boolean",
+          "description": "Connect over TLS."
         },
         "schema": {
           "type": "string",
@@ -111,17 +117,20 @@
         "prefix": {
           "type": "string",
           "default": "/items",
-          "pattern": "^/"
+          "pattern": "^/",
+          "description": "URL prefix for every table, e.g. /items/company."
         },
         "defaultLimit": {
           "type": "integer",
           "minimum": 1,
-          "default": 100
+          "default": 100,
+          "description": "Items per page when the request sets no limit."
         },
         "maxLimit": {
           "type": "integer",
           "minimum": 1,
-          "default": 1000
+          "default": 1000,
+          "description": "Largest page a request may ask for; limit=-1 means this."
         }
       },
       "default": {}
@@ -133,7 +142,8 @@
       "properties": {
         "enabled": {
           "type": "boolean",
-          "default": true
+          "default": true,
+          "description": "Scope tables that have the tenant column to the caller's tenant."
         },
         "column": {
           "type": "string",
@@ -166,15 +176,18 @@
             "header",
             "none"
           ],
-          "default": "jwt"
+          "default": "jwt",
+          "description": "jwt: verify a bearer token. header: trust headers set by a gateway. none: development only."
         },
         "tenantClaim": {
           "type": "string",
-          "default": "tenant_id"
+          "default": "tenant_id",
+          "description": "Token claim (or header) holding the tenant id."
         },
         "permissionsClaim": {
           "type": "string",
-          "default": "permissions"
+          "default": "permissions",
+          "description": "Token claim (or header) holding the permission list."
         }
       },
       "default": {}
@@ -206,7 +219,8 @@
             "read",
             "update",
             "delete"
-          ]
+          ],
+          "description": "Actions that get routes and permissions. Read is always generated."
         }
       },
       "default": {}
@@ -219,20 +233,24 @@
         "additionalProperties": false,
         "properties": {
           "skip": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Leave this table out."
           },
           "readOnly": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Only generate the GET routes."
           },
           "hiddenColumns": {
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "Never returned, filtered, sorted or searched; still writable."
           },
           "routeName": {
             "type": "string",
-            "pattern": "^[a-z0-9_-]+$"
+            "pattern": "^[a-z0-9_-]+$",
+            "description": "URL segment instead of the table name."
           }
         }
       },

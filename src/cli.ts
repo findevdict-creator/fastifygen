@@ -1,11 +1,13 @@
 #!/usr/bin/env node
 import { existsSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
+import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { Command } from 'commander';
 import { ConfigError, ConfigLoader, type LoadedConfig } from './config/ConfigLoader.js';
 import { ConfigTemplate } from './config/ConfigTemplate.js';
 import { DatabaseConnectionError, Generator } from './Generator.js';
+import { UiServer } from './ui-server/UiServer.js';
 
 /** Loads the config, pointing new users at `init` when there is none yet. */
 async function loadConfig(file: string): Promise<LoadedConfig> {
@@ -84,6 +86,29 @@ program
       console.error(`\nNext: cd ${relative} && npm install && cp .env.example .env && npm run dev`);
     }
   });
+
+program
+  .command('ui')
+  .description('Open the web UI to edit config.json, browse the schema and generate')
+  .option('-c, --config <path>', 'config file to edit (created on first save)', 'config.json')
+  .option('-p, --port <port>', 'port to listen on', '4321')
+  .option('--no-open', 'do not open a browser')
+  .action(async (options: { config: string; port: string; open: boolean }) => {
+    const { url } = await new UiServer({ configPath: options.config, port: Number(options.port) }).listen();
+    console.error(`fastifygen UI running at ${url} (editing ${path.resolve(options.config)}). Press Ctrl+C to stop.`);
+    if (options.open) openBrowser(url);
+  });
+
+/** Best effort: if no browser opens, the URL is already printed. */
+function openBrowser(url: string): void {
+  const command = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'cmd' : 'xdg-open';
+  const args = process.platform === 'win32' ? ['/c', 'start', '', url] : [url];
+  try {
+    spawn(command, args, { stdio: 'ignore', detached: true }).on('error', () => {}).unref();
+  } catch {
+    // Ignore: the URL is printed above.
+  }
+}
 
 program.parseAsync().catch((error: unknown) => {
   const known = error instanceof ConfigError || error instanceof DatabaseConnectionError;

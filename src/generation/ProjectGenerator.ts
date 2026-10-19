@@ -8,7 +8,7 @@ import { GENERATED_HEADER } from './emitters/headers.js';
 import { ModuleEmitter } from './emitters/ModuleEmitter.js';
 import { ProjectEmitter } from './emitters/ProjectEmitter.js';
 import { RlsEmitter } from './emitters/RlsEmitter.js';
-import { FileWriter, type WrittenFile } from './FileWriter.js';
+import { FileWriter, type FileWriterOptions, type WrittenFile } from './FileWriter.js';
 import { RuntimeSchemaBuilder } from './RuntimeSchemaBuilder.js';
 
 export interface GenerationResult {
@@ -16,7 +16,13 @@ export interface GenerationResult {
   tables: string[];
   files: WrittenFile[];
   warnings: string[];
+  /** Permission names per table and action, e.g. `{ company: { read: 'read:company' } }`. */
+  permissions: Record<string, Record<string, string>>;
+  /** True when nothing was written (a preview). */
+  dryRun: boolean;
 }
+
+export type GenerateOptions = FileWriterOptions;
 
 /** Writes a complete, runnable Fastify project for a database model. */
 export class ProjectGenerator {
@@ -26,8 +32,8 @@ export class ProjectGenerator {
     this.modules = new ModuleEmitter(config);
   }
 
-  async generate(model: DatabaseModel, outputDir: string): Promise<GenerationResult> {
-    const writer = new FileWriter(outputDir);
+  async generate(model: DatabaseModel, outputDir: string, options: GenerateOptions = {}): Promise<GenerationResult> {
+    const writer = new FileWriter(outputDir, options);
     const warnings = [...model.warnings];
 
     await this.copyRuntime(writer);
@@ -59,7 +65,14 @@ export class ProjectGenerator {
     if (kept.length > 0 && writer.files.some((file) => file.status === 'updated')) {
       warnings.push(`Kept ${kept.length} file(s) you own unchanged; update them by hand if the schema change affects them.`);
     }
-    return { outputDir, tables: model.tables.map((table) => table.name), files: writer.files, warnings };
+    return {
+      outputDir,
+      tables: model.tables.map((table) => table.name),
+      files: writer.files,
+      warnings,
+      permissions,
+      dryRun: options.dryRun ?? false,
+    };
   }
 
   /** Copies the runtime core's TypeScript source into `src/core/`. */
