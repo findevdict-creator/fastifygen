@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process';
-import { readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
@@ -82,6 +83,44 @@ describe.skipIf(!databaseUrl)('generated API (Postgres)', () => {
 
     it('type-checks', async () => {
       await expect(run(path.join(repoRoot, 'node_modules/.bin/tsc'), ['--noEmit', '-p', outputDir])).resolves.toBeTruthy();
+    }, 60_000);
+
+    it('declares every package its code imports, with types', async () => {
+      const pkg = JSON.parse(await readFile(path.join(outputDir, 'package.json'), 'utf8'));
+      const declared = new Set([...Object.keys(pkg.dependencies), ...Object.keys(pkg.devDependencies)]);
+      const files = (await readdir(outputDir, { recursive: true }))
+        .filter((file) => file.endsWith('.ts') && !file.startsWith('node_modules'));
+      const imported = new Set<string>();
+      for (const file of files) {
+        for (const [, specifier] of (await readFile(path.join(outputDir, file), 'utf8')).matchAll(/from '([^'.][^']*)'/g)) {
+          if (specifier!.startsWith('node:')) continue;
+          imported.add(specifier!.startsWith('@') ? specifier!.split('/').slice(0, 2).join('/') : specifier!.split('/')[0]!);
+        }
+      }
+      expect(imported.size).toBeGreaterThan(0);
+      for (const name of imported) {
+        expect(declared, `package.json is missing "${name}"`).toContain(name);
+        const own = JSON.parse(await readFile(path.join(repoRoot, 'node_modules', name, 'package.json'), 'utf8'));
+        const bundlesTypes = Boolean(own.types ?? own.typings) || existsSync(path.join(repoRoot, 'node_modules', name, 'index.d.ts'));
+        if (!bundlesTypes) expect(declared, `package.json is missing "@types/${name}"`).toContain(`@types/${name}`);
+      }
+    });
+
+    it('signs development tokens the API accepts', async () => {
+      const tokenScript = path.join(outputDir, 'scripts/token.ts');
+      await run(path.join(repoRoot, 'node_modules/.bin/tsc'), [
+        '--noEmit', '--ignoreConfig', '--strict', '--skipLibCheck', '--types', 'node',
+        '--module', 'nodenext', '--moduleResolution', 'nodenext', '--target', 'es2022', tokenScript,
+      ]);
+      const { stdout } = await run(
+        path.join(repoRoot, 'node_modules/.bin/tsx'),
+        [tokenScript, '--tenant', TENANT_A, '--permissions', 'read:company'],
+        { cwd: outputDir, env: { ...process.env, JWT_SECRET: process.env.JWT_SECRET } },
+      );
+      const response = await get('/items/company?fields=name', stdout.trim());
+      expect(response.statusCode).toBe(200);
+      expect(response.json().data).toEqual([{ name: 'Acme' }, { name: 'Globex' }]);
+      expect((await send('POST', '/items/company', { name: 'X' }, stdout.trim())).statusCode).toBe(403);
     }, 60_000);
 
     it('lists every permission', async () => {
@@ -195,6 +234,29 @@ describe.skipIf(!databaseUrl)('generated API (Postgres)', () => {
     it('never returns hidden columns', async () => {
       const response = await get('/items/users', token(TENANT_A, ['*']));
       expect(Object.keys(response.json().data[0])).toEqual(['id', 'tenant_id', 'email']);
+    });
+
+    it('answers ping and health checks without a token', async () => {
+      const ping = await get('/server/ping');
+      expect(ping.statusCode).toBe(200);
+      expect(ping.body).toBe('pong');
+      const health = await get('/server/health');
+      expect(health.statusCode).toBe(200);
+      expect(health.json()).toEqual({ status: 'ok' });
+    });
+
+    it('answers unknown routes and impossible ids in the same error format', async () => {
+      const route = await get('/nope?x=1');
+      expect(route.statusCode).toBe(404);
+      expect(route.json()).toEqual({ errors: [{ message: "Route GET /nope doesn't exist", extensions: { code: 'ROUTE_NOT_FOUND' } }] });
+
+      const auth = token(TENANT_A, ['*']);
+      for (const url of ['/items/company/abc', '/items/users/not-a-uuid', '/items/project_members/1,x']) {
+        const response = await get(url, auth);
+        expect(response.statusCode, url).toBe(404);
+        expect(response.json().errors[0].extensions.code).toBe('NOT_FOUND');
+      }
+      expect((await send('DELETE', '/items/company/abc', undefined, auth)).statusCode).toBe(404);
     });
 
     it('only serves reads for read-only tables, and no by-id routes without a primary key', async () => {

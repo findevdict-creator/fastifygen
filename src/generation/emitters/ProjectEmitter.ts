@@ -31,6 +31,9 @@ export class ProjectEmitter {
       { path: 'src/schema.ts', content: this.schema(input.runtimeSchema), kind: 'generated' },
       { path: 'src/permissions.ts', content: this.permissionsFile(input.permissions), kind: 'generated' },
       { path: 'src/modules/index.ts', content: this.modulesIndex(input.model.tables), kind: 'generated' },
+      ...(this.config.auth.mode === 'jwt'
+        ? [{ path: 'scripts/token.ts', content: this.tokenScript(), kind: 'generated' as const }]
+        : []),
     ];
   }
 
@@ -52,11 +55,13 @@ export class ProjectEmitter {
         build: 'tsc',
         start: 'node dist/server.js',
         typecheck: 'tsc --noEmit',
+        ...(this.config.auth.mode === 'jwt' ? { token: 'tsx scripts/token.ts' } : {}),
       },
       engines: { node: '>=20.12' },
       dependencies: Object.fromEntries(Object.entries(dependencies).sort(([a], [b]) => a.localeCompare(b))),
       devDependencies: {
         '@types/node': '^22.0.0',
+        '@types/pg': '^8.23.0',
         '@types/qs': '^6.15.0',
         tsx: '^4.23.0',
         typescript: '^7.0.0',
@@ -109,7 +114,7 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import type { Knex } from 'knex';
 import qs from 'qs';
 import { AuthHook } from './auth/AuthHook.js';
-import { ErrorMapper, RouteGuard, SchemaOverview } from './core/index.js';
+import { ErrorMapper, RouteGuard, SchemaOverview, ServerRoutes } from './core/index.js';
 import { Database } from './db.js';
 import { Modules } from './modules/index.js';
 import { runtimeSchema } from './schema.js';
@@ -120,7 +125,7 @@ export interface ApplicationOptions {
   logger?: boolean;
 }
 
-/** Builds the Fastify app: query parsing, error format, auth and every table's routes. */
+/** Builds the Fastify app: query parsing, error format, auth, health checks and every table's routes. */
 export class Application {
   constructor(private readonly options: ApplicationOptions = {}) {}
 
@@ -140,6 +145,8 @@ export class Application {
 
     const schema = new SchemaOverview(runtimeSchema);
     app.setErrorHandler(ErrorMapper.handler);
+    app.setNotFoundHandler(ErrorMapper.notFound);
+    await app.register(new ServerRoutes(knex).register);
 
     const auth = new AuthHook();
     await auth.register(app);
@@ -268,6 +275,56 @@ export class AuthHook {
 ${shared.replace(/\nfunction asList[\s\S]*$/, '\n')}`;
   }
 
+  private tokenScript(): string {
+    const { tenantClaim, permissionsClaim } = this.config.auth;
+    return `${GENERATED_HEADER}
+//
+// Signs a development token with JWT_SECRET from .env, for trying the API:
+//   npm run token -- --tenant <tenant id> --permissions "read:company,create:company"
+// Options: --user <id> (sub), --expires <30m|12h|7d> (default 24h).
+import { createHmac } from 'node:crypto';
+import { existsSync } from 'node:fs';
+import { parseArgs } from 'node:util';
+
+if (existsSync('.env')) process.loadEnvFile('.env');
+const secret = process.env.JWT_SECRET;
+if (!secret) {
+  console.error('JWT_SECRET is not set. Add it to .env first.');
+  process.exit(1);
+}
+
+const { values } = parseArgs({
+  options: {
+    tenant: { type: 'string' },
+    permissions: { type: 'string', default: '*' },
+    user: { type: 'string', default: 'dev-user' },
+    expires: { type: 'string', default: '24h' },
+  },
+});
+
+const match = /^(\\d+)([smhd])$/.exec(values.expires);
+if (!match) {
+  console.error('--expires must look like 30m, 12h or 7d');
+  process.exit(1);
+}
+const seconds = Number(match[1]) * { s: 1, m: 60, h: 3600, d: 86400 }[match[2] as 's' | 'm' | 'h' | 'd'];
+const now = Math.floor(Date.now() / 1000);
+
+const payload = {
+  sub: values.user,
+  ${JSON.stringify(tenantClaim)}: values.tenant ?? null,
+  ${JSON.stringify(permissionsClaim)}: values.permissions.split(',').map((p) => p.trim()).filter(Boolean),
+  iat: now,
+  exp: now + seconds,
+};
+
+const encode = (part: object) => Buffer.from(JSON.stringify(part)).toString('base64url');
+const unsigned = \`\${encode({ alg: 'HS256', typ: 'JWT' })}.\${encode(payload)}\`;
+const signature = createHmac('sha256', secret).update(unsigned).digest('base64url');
+console.log(\`\${unsigned}.\${signature}\`);
+`;
+  }
+
   private schema(runtimeSchema: RuntimeSchema): string {
     return `${GENERATED_HEADER}
 import type { RuntimeSchema } from './core/index.js';
@@ -342,6 +399,13 @@ ${registrations.join('\n')}
       none: `No authentication: every request gets every permission and the tenant comes from the \`${this.config.auth.tenantClaim}\` header. Development only.`,
     }[this.config.auth.mode];
 
+    const rls = this.config.tenancy.enabled && this.config.tenancy.rls;
+    const jwt = this.config.auth.mode === 'jwt';
+    const sampleTable = input.model.tables.find((table) => table.tenantScoped) ?? input.model.tables[0];
+    const sampleRoute = sampleTable
+      ? `${this.config.api.prefix}/${this.config.overrides[sampleTable.name]?.routeName ?? sampleTable.name}`
+      : this.config.api.prefix;
+
     return `# ${input.name}
 
 A Fastify REST API generated by [fastifygen](https://github.com/findevdict-creator/fastifygen) from a PostgreSQL schema.
@@ -350,16 +414,39 @@ A Fastify REST API generated by [fastifygen](https://github.com/findevdict-creat
 
 \`\`\`bash
 npm install
-cp .env.example .env    # then fill in DATABASE_URL${this.config.auth.mode === 'jwt' ? ' and JWT_SECRET' : ''}
+cp .env.example .env    # then fill in DATABASE_URL${jwt ? ' and JWT_SECRET' : ''}
 npm run dev
+curl localhost:3000/server/health    # {"status":"ok"} once the database answers
 \`\`\`
-${this.config.tenancy.enabled && this.config.tenancy.rls ? `
-Apply the row-level security policies once (and again after regenerating): \`psql "$DATABASE_URL" -f sql/rls.sql\`. Run the API as an ordinary database role: superusers skip the policies.
+${rls ? `
+### Row-level security
+
+Apply the policies once, and again after regenerating, as the table owner:
+
+\`\`\`bash
+psql "$DATABASE_URL" -f sql/rls.sql
+\`\`\`
+
+Superusers and roles with \`BYPASSRLS\` skip the policies, so point the API's \`DATABASE_URL\` at an ordinary role, for example:
+
+\`\`\`sql
+CREATE ROLE api_user LOGIN PASSWORD 'change-me';
+GRANT USAGE ON SCHEMA ${input.model.schema} TO api_user;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA ${input.model.schema} TO api_user;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA ${input.model.schema} TO api_user;
+\`\`\`
 ` : ''}
 ## Auth
 
 ${auth}
+${jwt ? `
+To try the API, sign a development token with your \`JWT_SECRET\` and send it:
 
+\`\`\`bash
+TOKEN=$(npm run --silent token -- --tenant <tenant id> --permissions "*")
+curl -H "Authorization: Bearer $TOKEN" localhost:3000${sampleRoute}
+\`\`\`
+` : ''}
 Permissions look like \`${this.config.permissions.format.replace('{action}', 'read').replace('{table}', 'company')}\`; \`*\`, \`read:*\` and \`*:company\` work as wildcards. The full list is in \`src/permissions.ts\`.
 
 ## Tables
@@ -375,7 +462,9 @@ Every table supports Directus-style \`fields\`, \`filter\`, \`sort\`, \`limit\`,
 - \`src/modules/<table>/\`: \`*Routes.ts\`, \`*.schemas.ts\` and \`*.types.ts\` are regenerated on every run. \`*Controller.ts\`, \`*Service.ts\` and \`*Repository.ts\` are created once and are yours to edit.
 - \`src/core/\`: the shared runtime (rewritten on every run).
 - \`src/schema.ts\`, \`src/permissions.ts\`, \`src/modules/index.ts\`, \`sql/rls.sql\`: regenerated.
-- \`src/app.ts\`, \`src/server.ts\`, \`src/db.ts\`, \`src/auth/AuthHook.ts\`: created once, yours to edit.
+- \`src/app.ts\`, \`src/server.ts\`, \`src/db.ts\`, \`src/auth/AuthHook.ts\`: created once, yours to edit.${jwt ? '\n- `scripts/token.ts`: development token helper (regenerated).' : ''}
+
+\`GET /server/ping\` and \`GET /server/health\` answer without a token, for load balancers and uptime checks.
 `;
   }
 }

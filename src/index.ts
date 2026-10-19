@@ -1,6 +1,7 @@
-export { Generator } from './Generator.js';
+export { Generator, DatabaseConnectionError } from './Generator.js';
 export { ConfigLoader, ConfigError, type LoadedConfig, type ConfigLoaderOptions } from './config/ConfigLoader.js';
 export { configSchema } from './config/config.schema.js';
+export { ConfigTemplate, type ConfigTemplateOptions } from './config/ConfigTemplate.js';
 export type * from './config/types.js';
 export { SchemaIntrospector, type IntrospectionConfig } from './introspection/SchemaIntrospector.js';
 export { TypeMapper, type TypeMapping } from './introspection/TypeMapper.js';

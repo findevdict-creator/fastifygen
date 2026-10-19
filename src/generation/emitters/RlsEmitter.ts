@@ -41,6 +41,8 @@ CREATE POLICY ${RlsEmitter.POLICY} ON ${qualified}
 --   Run migrations and admin scripts as a role with BYPASSRLS, or set the
 --   setting first: SELECT set_config('${settingName}', '<tenant id>', false);
 
+SET client_min_messages = warning;
+
 BEGIN;
 
 ${statements.join('\n\n') || '-- No tenant-scoped tables found.'}
