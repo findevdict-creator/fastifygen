@@ -1,6 +1,6 @@
 import knexFactory, { type Knex } from 'knex';
 import type { GeneratorConfig } from './config/types.js';
-import { ProjectGenerator, type GenerationResult } from './generation/ProjectGenerator.js';
+import { ProjectGenerator, type GenerateOptions, type GenerationResult } from './generation/ProjectGenerator.js';
 import { SchemaIntrospector } from './introspection/SchemaIntrospector.js';
 import type { DatabaseModel } from './introspection/types.js';
 
@@ -33,14 +33,25 @@ export class Generator {
     }
   }
 
-  /** Reads the schema and writes a complete Fastify project to `outputDir`. */
-  async generate(outputDir: string): Promise<GenerationResult> {
-    return new ProjectGenerator(this.config).generate(await this.introspect(), outputDir);
+  /** Reads the schema and writes a complete Fastify project to `outputDir` (or only reports what it would write, with `dryRun`). */
+  async generate(outputDir: string, options: GenerateOptions = {}): Promise<GenerationResult> {
+    return new ProjectGenerator(this.config).generate(await this.introspect(), outputDir, options);
   }
 
-  private async checkConnection(knex: Knex): Promise<void> {
+  /** Connects and returns the server's version, or throws a {@link DatabaseConnectionError}. */
+  async testConnection(): Promise<{ serverVersion: string }> {
+    const knex = this.createKnex();
     try {
-      await knex.raw('select 1');
+      return { serverVersion: await this.checkConnection(knex) };
+    } finally {
+      await knex.destroy();
+    }
+  }
+
+  private async checkConnection(knex: Knex): Promise<string> {
+    try {
+      const result = await knex.raw<{ rows: { server_version: string }[] }>('show server_version');
+      return result.rows[0]?.server_version ?? 'unknown';
     } catch (error) {
       const reason = error instanceof Error && error.message ? error.message : String(error);
       throw new DatabaseConnectionError(`Cannot connect to the database: ${reason}`, error);

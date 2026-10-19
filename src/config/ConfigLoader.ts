@@ -64,17 +64,53 @@ export class ConfigLoader {
     };
   }
 
+  /** The absolute output folder for a config, resolved against the config file's folder. */
+  static outputDir(configPath: string, config: GeneratorConfig): string {
+    return path.resolve(path.dirname(path.resolve(configPath)), config.output.dir);
+  }
+
   /** Validates an already-parsed config object. Does not modify the input. */
   parse(raw: unknown): GeneratorConfig {
-    const resolved = this.substituteEnv(structuredClone(raw));
+    return this.resolve(raw, true);
+  }
+
+  /**
+   * Checks a config's shape without requiring its environment variables, e.g.
+   * before saving a form. Returns the problems found; empty means valid.
+   */
+  validate(raw: unknown): string[] {
+    try {
+      this.resolve(raw, false);
+      return [];
+    } catch (error) {
+      if (error instanceof ConfigError) return error.issues.length ? error.issues : [error.message];
+      throw error;
+    }
+  }
+
+  /** Names of the `${VAR}` references in a config that have no value and no fallback. */
+  missingEnv(raw: unknown): string[] {
+    const missing = new Set<string>();
+    this.substituteEnv(structuredClone(raw), missing);
+    return [...missing];
+  }
+
+  private resolve(raw: unknown, requireEnv: boolean): GeneratorConfig {
+    const missing = new Set<string>();
+    const resolved = this.substituteEnv(structuredClone(raw), missing);
+    if (requireEnv && missing.size > 0) {
+      throw new ConfigError(
+        'Config references environment variables that are not set',
+        [...missing].map((name) => `\${${name}}`),
+      );
+    }
     if (!this.validator(resolved)) {
       throw new ConfigError('Invalid config', this.formatErrors(this.validator.errors ?? []));
     }
     return resolved as GeneratorConfig;
   }
 
-  private substituteEnv(value: unknown): unknown {
-    const missing = new Set<string>();
+  private substituteEnv(value: unknown, missing: Set<string>): unknown {
     const walk = (node: unknown): unknown => {
       if (typeof node === 'string') {
         return node.replace(ConfigLoader.ENV_REF, (_match, name: string, fallback?: string) => {
@@ -92,14 +128,7 @@ export class ConfigLoader {
       return node;
     };
 
-    const result = walk(value);
-    if (missing.size > 0) {
-      throw new ConfigError(
-        'Config references environment variables that are not set',
-        [...missing].map((name) => `\${${name}}`),
-      );
-    }
-    return result;
+    return walk(value);
   }
 
   private formatErrors(errors: ErrorObject[]): string[] {

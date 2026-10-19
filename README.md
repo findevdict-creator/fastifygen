@@ -59,10 +59,25 @@ When the database changes, run `generate` again. Routes, schemas and types follo
 | `fastifygen init [-c config.json] [--database-url <url>] [--force]` | Writes a starter config. Refuses to overwrite without `--force`. |
 | `fastifygen introspect [-c config.json] [-o model.json]` | Prints what it read from the database as JSON. |
 | `fastifygen generate [-c config.json] [-o ./api]` | Writes the Fastify project. `-o` overrides `output.dir`. |
+| `fastifygen ui [-c config.json] [-p 4321] [--no-open]` | Opens the web UI (below). |
 
 All commands load `.env` from the current folder first (`--env-file` to change it). A missing config or an unreachable database is reported in one line.
 
 `introspect` prints the database model as JSON: tables, columns (with TypeScript and JSON Schema types), primary keys, unique constraints, foreign keys in both directions, enums, and whether each table is tenant-scoped.
+
+## Web UI
+
+```bash
+npx fastifygen ui        # opens http://127.0.0.1:4321
+```
+
+The same steps as the CLI, in a browser:
+
+1. **Settings**: a form for every config.json setting, built from its JSON Schema, with a **Test connection** button. Saving writes config.json with `${VAR}` references left as they are.
+2. **Schema**: every table with its columns, relations and tenant scoping. Switch a table to skipped or read-only, rename its route, or hide columns, and see its routes and permissions update as you go.
+3. **Generate**: a preview of every file and whether it will be created, rewritten or left alone, with each file's content, then **Generate**.
+
+It only listens on 127.0.0.1 and only answers requests for localhost that carry its own header, since it can read your database credentials and write files. Without a config.json it starts from the defaults and creates the file on first save.
 
 ## config.json
 
@@ -195,6 +210,8 @@ const result = await new Generator(config).generate(outputDir); // files written
 `ConfigTemplate.build()` returns the starter config and `configSchema` its JSON Schema, for building a settings form.
 
 ## Development
+
+The UI lives in `ui/` (React, Vite, TypeScript) and builds into `dist/ui-app` with `npm run build`. Its server is `src/ui-server/UiServer.ts`, a JSON API over the same classes the CLI uses. To work on the frontend with hot reload, run `npx tsx src/cli.ts ui --no-open` in one terminal and `npm run dev:ui` in another; Vite proxies `/api` to it.
 
 ```bash
 docker compose up -d   # local Postgres 16
