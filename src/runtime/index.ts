@@ -10,3 +10,4 @@ export { FilterApplier, type FilterContext } from './query/FilterApplier.js';
 export { ItemsRepository, type RepositoryContext } from './ItemsRepository.js';
 export { ItemsService, type ServiceContext } from './ItemsService.js';
 export { ItemsController, type ControllerContext } from './ItemsController.js';
+export { RouteGuard } from './RouteGuard.js';

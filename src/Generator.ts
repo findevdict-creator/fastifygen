@@ -1,5 +1,6 @@
 import knexFactory, { type Knex } from 'knex';
 import type { GeneratorConfig } from './config/types.js';
+import { ProjectGenerator, type GenerationResult } from './generation/ProjectGenerator.js';
 import { SchemaIntrospector } from './introspection/SchemaIntrospector.js';
 import type { DatabaseModel } from './introspection/types.js';
 
@@ -18,6 +19,11 @@ export class Generator {
     } finally {
       await knex.destroy();
     }
+  }
+
+  /** Reads the schema and writes a complete Fastify project to `outputDir`. */
+  async generate(outputDir: string): Promise<GenerationResult> {
+    return new ProjectGenerator(this.config).generate(await this.introspect(), outputDir);
   }
 
   private createKnex(): Knex {

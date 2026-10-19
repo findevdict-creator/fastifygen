@@ -1,6 +1,6 @@
 import type { Knex } from 'knex';
 import { InvalidPayloadError, MethodNotAllowedError, NotFoundError } from './errors.js';
-import { ItemsRepository } from './ItemsRepository.js';
+import { ItemsRepository, type RepositoryContext } from './ItemsRepository.js';
 import { PermissionChecker } from './PermissionChecker.js';
 import type { SchemaOverview } from './SchemaOverview.js';
 import type { Accountability, Item, PrimaryKey, Query, ReadManyResult } from './types.js';
@@ -139,13 +139,18 @@ export class ItemsService {
     return data;
   }
 
+  /** Override to use a table-specific repository subclass. */
   protected createRepository(trx: Knex.Transaction): ItemsRepository {
-    return new ItemsRepository(this.table, {
+    return new ItemsRepository(this.table, this.repositoryContext(trx));
+  }
+
+  protected repositoryContext(trx: Knex.Transaction): RepositoryContext {
+    return {
       knex: trx,
       schema: this.schema,
       tenantId: this.accountability.tenantId,
       onRelatedTable: (table) => this.permissions.assert('read', table),
-    });
+    };
   }
 
   /**

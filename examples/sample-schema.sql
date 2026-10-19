@@ -32,7 +32,8 @@ CREATE TABLE company (
   founded date,
   revenue numeric(12, 2),
   metadata jsonb,
-  created_at timestamptz NOT NULL DEFAULT now()
+  created_at timestamptz NOT NULL DEFAULT now(),
+  archived_at timestamptz
 );
 COMMENT ON COLUMN company.name IS 'Legal name';
 

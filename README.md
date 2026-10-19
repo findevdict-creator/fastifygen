@@ -2,13 +2,13 @@
 
 Generate a class-based Fastify REST API (controller / service / repository) from a PostgreSQL schema, with Directus-style endpoints, per-table permissions and multitenancy.
 
-> Status: step 2 of 4. Config, schema introspection and the shared runtime core are in place; per-table code generation comes next.
+> Status: step 3 of 4. `fastifygen generate` writes a complete, runnable Fastify project; an end-to-end walkthrough and polish come next.
 
 ## Roadmap
 
 1. **Config and schema reading** — `config.json` format, its JSON Schema, and Postgres introspection into a JSON model. ✅
 2. **Shared core** — class-based Knex repository, service and controller keyed by table name; Directus query parser (`fields`, `filter`, `sort`, `limit`, `offset`, `page`, `search`) with relational fields; tenant scoping via `tenant_id` and `SET LOCAL` for row-level security. ✅
-3. **Per-table generation** — a Fastify plugin per table using full `fastify.route()` declarations, JSON schemas, permissions in route `config`, auth and permission hooks, extension classes and RLS policy SQL.
+3. **Per-table generation** — a Fastify plugin per table using full `fastify.route()` declarations, JSON schemas, permissions in route `config`, auth and permission hooks, extension classes and RLS policy SQL. ✅
 4. **CLI and test run** — `fastifygen generate`, checked end to end against a sample schema.
 
 ## Quick start
@@ -18,6 +18,13 @@ npm install
 npm run build
 export DATABASE_URL=postgres://user:pass@localhost:5432/app   # or put it in .env
 node dist/cli.js introspect -c examples/config.json -o model.json
+```
+
+Generate the API:
+
+```bash
+node dist/cli.js generate -c examples/config.json -o ./my-api
+cd my-api && npm install && cp .env.example .env && npm run dev
 ```
 
 `introspect` prints the database model as JSON: tables, columns (with TypeScript and JSON Schema types), primary keys, unique constraints, foreign keys in both directions, enums, and whether each table is tenant-scoped.
@@ -56,6 +63,44 @@ Every setting lives in one file. Only `database` is required; everything else ha
 
 `${VAR}` and `${VAR:-fallback}` are replaced from the environment, so secrets stay out of the file. The CLI loads `.env` from the current folder if it exists (`--env-file` to change it).
 
+## What `generate` writes
+
+```
+my-api/
+  package.json, tsconfig.json, .env.example, README.md
+  sql/rls.sql                      row-level security policies (when tenancy.rls)
+  src/
+    server.ts, app.ts, db.ts       Application class, Fastify setup, Knex connection
+    auth/AuthHook.ts               jwt | header | none, from auth.mode
+    core/                          the runtime core below, copied in
+    schema.ts                      tables, columns and relations the API serves
+    permissions.ts                 every permission, per table and action
+    modules/index.ts               registers each table under api.prefix
+    modules/company/
+      CompanyRoutes.ts             full fastify.route() declarations
+      company.schemas.ts           request and response JSON Schemas
+      company.types.ts             a TypeScript interface for the row
+      CompanyController.ts         extends ItemsController
+      CompanyService.ts            extends ItemsService
+      CompanyRepository.ts         extends ItemsRepository
+```
+
+Each route declares its permission in `config` and runs `authenticate` (preValidation) and `checkPermission` (preHandler):
+
+```ts
+fastify.route({
+  method: 'GET',
+  url: '/:id',
+  schema: { params: schemas.params, querystring: schemas.query, response: { 200: schemas.itemResponse } },
+  config: { permission: 'read:company', action: 'read', table: 'company' },
+  preValidation: [this.auth.authenticate],
+  preHandler: [this.guard.checkPermission],
+  handler: this.controller.readOne,
+});
+```
+
+**Regenerating is safe.** Files marked "Generated" (routes, schemas, types, `core/`, `schema.ts`, `permissions.ts`, `modules/index.ts`, `sql/rls.sql`) are rewritten on every run. Files marked "Created" (controllers, services, repositories, `app.ts`, `server.ts`, `db.ts`, `AuthHook.ts`, `package.json`) are written once and then left alone, so your changes survive. Read-only tables get only GET routes; tables without a primary key get no by-id routes; actions left out of `permissions.actions` get no routes.
+
 ## Runtime core
 
 `src/runtime/` is the shared, table-agnostic core every generated API runs on (also importable as `fastifygen/runtime`). It depends only on Knex and Fastify.
@@ -89,7 +134,7 @@ Writes answer 204 when the caller may write but not read the table.
 - `filter` as JSON or brackets: `filter[status][_eq]=active`, `filter[company_id][name][_eq]=Acme`, `filter[employee][_some][salary][_gt]=1000`, `filter[project][_none]`. Operators: `_eq _neq _lt _lte _gt _gte _in _nin _null _nnull _contains _ncontains _icontains _starts_with _istarts_with _ends_with _iends_with _between _nbetween _empty _nempty`, plus `_and` / `_or`.
 - `sort=-created_at,name`, `limit` (`-1` = `maxLimit`), `offset` or `page`, `search` (text columns, plus exact numbers and UUIDs), `meta=total_count,filter_count` or `meta=*`.
 
-The bracket form needs `qs` as Fastify's querystring parser: `Fastify({ querystringParser: (q) => qs.parse(q, { depth: 10 }) })`.
+The bracket form needs `qs` as Fastify's querystring parser: `Fastify({ routerOptions: { querystringParser: (q) => qs.parse(q, { depth: 10 }) } })`.
 
 ### Tenancy and permissions
 

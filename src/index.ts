@@ -6,3 +6,6 @@ export { SchemaIntrospector, type IntrospectionConfig } from './introspection/Sc
 export { TypeMapper, type TypeMapping } from './introspection/TypeMapper.js';
 export type * from './introspection/types.js';
 export { RuntimeSchemaBuilder } from './generation/RuntimeSchemaBuilder.js';
+export { ProjectGenerator, type GenerationResult } from './generation/ProjectGenerator.js';
+export { JsonSchemaBuilder, type TableSchemas } from './generation/JsonSchemaBuilder.js';
+export type { WrittenFile, FileKind, FileStatus } from './generation/FileWriter.js';
