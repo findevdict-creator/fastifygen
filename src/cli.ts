@@ -3,8 +3,17 @@ import { existsSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { Command } from 'commander';
-import { ConfigError, ConfigLoader } from './config/ConfigLoader.js';
-import { Generator } from './Generator.js';
+import { ConfigError, ConfigLoader, type LoadedConfig } from './config/ConfigLoader.js';
+import { ConfigTemplate } from './config/ConfigTemplate.js';
+import { DatabaseConnectionError, Generator } from './Generator.js';
+
+/** Loads the config, pointing new users at `init` when there is none yet. */
+async function loadConfig(file: string): Promise<LoadedConfig> {
+  if (!existsSync(file)) {
+    throw new ConfigError(`No config file at ${path.resolve(file)}. Run "fastifygen init" to create one.`);
+  }
+  return new ConfigLoader().load(file);
+}
 
 const program = new Command()
   .name('fastifygen')
@@ -16,12 +25,33 @@ const program = new Command()
   });
 
 program
+  .command('init')
+  .description('Write a starter config.json with every setting at its default')
+  .option('-c, --config <path>', 'where to write it', 'config.json')
+  .option('--database-url <url>', 'value for database.url (default: ${DATABASE_URL})')
+  .option('-f, --force', 'overwrite an existing file')
+  .action(async (options: { config: string; databaseUrl?: string; force?: boolean }) => {
+    if (existsSync(options.config) && !options.force) {
+      throw new ConfigError(`${options.config} already exists. Use --force to overwrite it.`);
+    }
+    await writeFile(options.config, ConfigTemplate.render({ databaseUrl: options.databaseUrl }));
+    const usesEnv = !options.databaseUrl;
+    console.error(
+      [
+        `Created ${options.config}. Next:`,
+        usesEnv ? '  1. Set DATABASE_URL in your environment or in .env' : '  1. Review the settings in the file',
+        `  2. npx fastifygen generate${options.config === 'config.json' ? '' : ` -c ${options.config}`} -o ./api`,
+      ].join('\n'),
+    );
+  });
+
+program
   .command('introspect')
   .description('Read the database schema and print it as JSON')
   .option('-c, --config <path>', 'path to config.json', 'config.json')
   .option('-o, --out <path>', 'write the JSON to a file instead of stdout')
   .action(async (options: { config: string; out?: string }) => {
-    const { config } = await new ConfigLoader().load(options.config);
+    const { config } = await loadConfig(options.config);
     const model = await new Generator(config).introspect();
     for (const warning of model.warnings) console.error(`warning: ${warning}`);
     const json = `${JSON.stringify(model, null, 2)}\n`;
@@ -39,7 +69,7 @@ program
   .option('-c, --config <path>', 'path to config.json', 'config.json')
   .option('-o, --out <path>', 'output folder (overrides output.dir in the config)')
   .action(async (options: { config: string; out?: string }) => {
-    const loaded = await new ConfigLoader().load(options.config);
+    const loaded = await loadConfig(options.config);
     const outputDir = options.out ? path.resolve(options.out) : loaded.outputDir;
     const result = await new Generator(loaded.config).generate(outputDir);
     const count = (status: string) => result.files.filter((file) => file.status === status).length;
@@ -48,9 +78,15 @@ program
         `${count('created')} created, ${count('updated')} updated, ${count('unchanged')} unchanged, ${count('kept')} kept.`,
     );
     for (const warning of result.warnings) console.error(`warning: ${warning}`);
+    const created = count('created') > 0 && count('kept') === 0;
+    if (created) {
+      const relative = path.relative(process.cwd(), outputDir) || '.';
+      console.error(`\nNext: cd ${relative} && npm install && cp .env.example .env && npm run dev`);
+    }
   });
 
 program.parseAsync().catch((error: unknown) => {
-  console.error(error instanceof ConfigError ? error.message : error);
+  const known = error instanceof ConfigError || error instanceof DatabaseConnectionError;
+  console.error(known ? error.message : error);
   process.exitCode = 1;
 });

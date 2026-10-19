@@ -150,7 +150,17 @@ export class ItemsRepository {
     if (parts.length !== pk.length || parts.some((part) => part === '')) {
       throw new InvalidPayloadError(`Primary key must have ${pk.length} comma-separated values: ${pk.join(', ')}`);
     }
-    return Object.fromEntries(pk.map((column, index) => [column, parts[index] as string | number]));
+    const keyObject = Object.fromEntries(pk.map((column, index) => [column, parts[index] as string | number]));
+    // A value Postgres can't cast to the key's type ("abc" for an integer id) matches no item.
+    if (pk.some((column) => !this.fitsColumn(column, keyObject[column]))) throw new NotFoundError();
+    return keyObject;
+  }
+
+  private fitsColumn(column: string, value: unknown): boolean {
+    const { dataType } = this.meta.columns[column] ?? { dataType: '' };
+    if (SEARCHABLE_INT.has(dataType)) return /^-?\d+$/.test(String(value));
+    if (dataType === 'uuid') return UUID.test(String(value));
+    return true;
   }
 
   /** Primary key of a row, in the shape the API uses (a value, or an object for composite keys). */

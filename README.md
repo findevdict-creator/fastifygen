@@ -2,30 +2,65 @@
 
 Generate a class-based Fastify REST API (controller / service / repository) from a PostgreSQL schema, with Directus-style endpoints, per-table permissions and multitenancy.
 
-> Status: step 3 of 4. `fastifygen generate` writes a complete, runnable Fastify project; an end-to-end walkthrough and polish come next.
-
 ## Roadmap
 
-1. **Config and schema reading** — `config.json` format, its JSON Schema, and Postgres introspection into a JSON model. ✅
-2. **Shared core** — class-based Knex repository, service and controller keyed by table name; Directus query parser (`fields`, `filter`, `sort`, `limit`, `offset`, `page`, `search`) with relational fields; tenant scoping via `tenant_id` and `SET LOCAL` for row-level security. ✅
-3. **Per-table generation** — a Fastify plugin per table using full `fastify.route()` declarations, JSON schemas, permissions in route `config`, auth and permission hooks, extension classes and RLS policy SQL. ✅
-4. **CLI and test run** — `fastifygen generate`, checked end to end against a sample schema.
+1. **Config and schema reading**: `config.json` format, its JSON Schema, and Postgres introspection into a JSON model. ✅
+2. **Shared core**: class-based Knex repository, service and controller keyed by table name; Directus query parser (`fields`, `filter`, `sort`, `limit`, `offset`, `page`, `search`) with relational fields; tenant scoping via `tenant_id` and `SET LOCAL` for row-level security. ✅
+3. **Per-table generation**: a Fastify plugin per table using full `fastify.route()` declarations, JSON schemas, permissions in route `config`, auth and permission hooks, extension classes and RLS policy SQL. ✅
+4. **CLI and test run**: `init`, `introspect` and `generate`, walked through end to end on a fresh database. ✅
 
-## Quick start
+## Getting started
 
-```bash
-npm install
-npm run build
-export DATABASE_URL=postgres://user:pass@localhost:5432/app   # or put it in .env
-node dist/cli.js introspect -c examples/config.json -o model.json
-```
+You need Node 20.12+ and a Postgres database with your tables in it.
 
-Generate the API:
+**1. Install and create a config.**
 
 ```bash
-node dist/cli.js generate -c examples/config.json -o ./my-api
-cd my-api && npm install && cp .env.example .env && npm run dev
+npm install --save-dev github:findevdict-creator/fastifygen   # builds itself on install
+npx fastifygen init                 # writes config.json with every setting at its default
+echo 'DATABASE_URL=postgres://user:pass@localhost:5432/app' > .env
 ```
+
+**2. Generate the API.**
+
+```bash
+npx fastifygen generate -o ./api
+# Generated 7 table module(s) in ./api: 69 created, 0 updated, 0 unchanged, 0 kept.
+# Next: cd api && npm install && cp .env.example .env && npm run dev
+```
+
+**3. Run it.**
+
+```bash
+cd api && npm install
+cp .env.example .env                # set DATABASE_URL and JWT_SECRET
+psql "$DATABASE_URL" -f sql/rls.sql # row-level security, once per regeneration
+npm run dev
+curl localhost:3000/server/health   # {"status":"ok"}
+```
+
+Run the API as an ordinary database role, since superusers skip row-level security. The generated README has the `CREATE ROLE` and `GRANT` statements.
+
+**4. Call it.**
+
+```bash
+TOKEN=$(npm run --silent token -- --tenant <tenant id> --permissions "*")
+curl -H "Authorization: Bearer $TOKEN" "localhost:3000/items/company?fields=name,employee.first_name"
+```
+
+`npm run token` signs a development JWT with your `JWT_SECRET`. In production your identity provider issues the tokens; see `src/auth/AuthHook.ts`.
+
+When the database changes, run `generate` again. Routes, schemas and types follow the new columns, and your own code is left alone (see [What `generate` writes](#what-generate-writes)).
+
+### Commands
+
+| Command | What it does |
+| --- | --- |
+| `fastifygen init [-c config.json] [--database-url <url>] [--force]` | Writes a starter config. Refuses to overwrite without `--force`. |
+| `fastifygen introspect [-c config.json] [-o model.json]` | Prints what it read from the database as JSON. |
+| `fastifygen generate [-c config.json] [-o ./api]` | Writes the Fastify project. `-o` overrides `output.dir`. |
+
+All commands load `.env` from the current folder first (`--env-file` to change it). A missing config or an unreachable database is reported in one line.
 
 `introspect` prints the database model as JSON: tables, columns (with TypeScript and JSON Schema types), primary keys, unique constraints, foreign keys in both directions, enums, and whether each table is tenant-scoped.
 
@@ -76,6 +111,7 @@ my-api/
     schema.ts                      tables, columns and relations the API serves
     permissions.ts                 every permission, per table and action
     modules/index.ts               registers each table under api.prefix
+  scripts/token.ts                 development JWT helper (auth.mode jwt)
     modules/company/
       CompanyRoutes.ts             full fastify.route() declarations
       company.schemas.ts           request and response JSON Schemas
@@ -126,7 +162,7 @@ fastify.route({
 | `DELETE /items/company/:id` | | 204 |
 | `DELETE /items/company` | an array of keys or `{ keys }` | 204 |
 
-Writes answer 204 when the caller may write but not read the table.
+Writes answer 204 when the caller may write but not read the table. `GET /server/ping` and `GET /server/health` need no token. Unknown routes and ids that can't exist (`/items/company/abc`) answer 404 in the same error format.
 
 ### Query parameters
 
@@ -151,9 +187,12 @@ The CLI is a thin wrapper; a frontend or script can drive the same classes:
 ```ts
 import { ConfigLoader, Generator } from 'fastifygen';
 
-const { config } = await new ConfigLoader().load('config.json');
-const model = await new Generator(config).introspect();
+const { config, outputDir } = await new ConfigLoader().load('config.json');
+const model = await new Generator(config).introspect();   // the JSON model
+const result = await new Generator(config).generate(outputDir); // files written, warnings
 ```
+
+`ConfigTemplate.build()` returns the starter config and `configSchema` its JSON Schema, for building a settings form.
 
 ## Development
 

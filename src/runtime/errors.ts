@@ -47,6 +47,12 @@ export class NotFoundError extends ApiError {
   }
 }
 
+export class RouteNotFoundError extends ApiError {
+  constructor(method: string, url: string) {
+    super(`Route ${method} ${url} doesn't exist`, 404, 'ROUTE_NOT_FOUND');
+  }
+}
+
 export class MethodNotAllowedError extends ApiError {
   constructor(message: string) {
     super(message, 405, 'METHOD_NOT_ALLOWED');
@@ -97,6 +103,12 @@ export class ErrorMapper {
       return new ApiError(fastifyError.message, status, fastifyError.code ?? 'BAD_REQUEST');
     }
     return null;
+  }
+
+  /** Fastify not-found handler, so unknown routes answer in the same format: `fastify.setNotFoundHandler(ErrorMapper.notFound)`. */
+  static notFound(request: FastifyRequest, reply: FastifyReply) {
+    const error = new RouteNotFoundError(request.method, request.url.split('?')[0] ?? request.url);
+    return reply.status(error.status).send(error.toJSON());
   }
 
   /** Fastify error handler: `fastify.setErrorHandler(ErrorMapper.handler)`. */

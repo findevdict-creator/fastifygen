@@ -11,3 +11,4 @@ export { ItemsRepository, type RepositoryContext } from './ItemsRepository.js';
 export { ItemsService, type ServiceContext } from './ItemsService.js';
 export { ItemsController, type ControllerContext } from './ItemsController.js';
 export { RouteGuard } from './RouteGuard.js';
+export { ServerRoutes } from './ServerRoutes.js';
