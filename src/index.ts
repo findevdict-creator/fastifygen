@@ -5,3 +5,4 @@ export type * from './config/types.js';
 export { SchemaIntrospector, type IntrospectionConfig } from './introspection/SchemaIntrospector.js';
 export { TypeMapper, type TypeMapping } from './introspection/TypeMapper.js';
 export type * from './introspection/types.js';
+export { RuntimeSchemaBuilder } from './generation/RuntimeSchemaBuilder.js';
