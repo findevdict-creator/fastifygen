@@ -24,7 +24,7 @@ describe.skipIf(!databaseUrl)('ItemsController over HTTP (Postgres)', () => {
     seeded = await resetDatabase(knex);
     schema = await buildSchema(knex);
 
-    app = Fastify({ querystringParser: (query) => qs.parse(query, { depth: 10, arrayLimit: 100 }) });
+    app = Fastify({ routerOptions: { querystringParser: (query) => qs.parse(query, { depth: 10, arrayLimit: 100 }) } });
     app.setErrorHandler(ErrorMapper.handler);
     // Stand-in for the generated auth hook.
     app.addHook('onRequest', async (request) => {

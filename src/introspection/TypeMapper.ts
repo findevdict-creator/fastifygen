@@ -33,7 +33,8 @@ export class TypeMapper {
     citext: { tsType: 'string', jsonSchema: { type: 'string' } },
     name: { tsType: 'string', jsonSchema: { type: 'string' } },
     uuid: { tsType: 'string', jsonSchema: { type: 'string', format: 'uuid' } },
-    date: { tsType: 'Date', jsonSchema: { type: 'string', format: 'date' } },
+    // Generated APIs parse `date` as a string to avoid time zone shifts.
+    date: { tsType: 'string', jsonSchema: { type: 'string', format: 'date' } },
     timestamp: { tsType: 'Date', jsonSchema: { type: 'string', format: 'date-time' } },
     timestamptz: { tsType: 'Date', jsonSchema: { type: 'string', format: 'date-time' } },
     time: { tsType: 'string', jsonSchema: { type: 'string' } },
@@ -41,7 +42,7 @@ export class TypeMapper {
     interval: { tsType: 'string', jsonSchema: { type: 'string' } },
     json: { tsType: 'unknown', jsonSchema: {} },
     jsonb: { tsType: 'unknown', jsonSchema: {} },
-    bytea: { tsType: 'Buffer', jsonSchema: { type: 'string', contentEncoding: 'base64' } },
+    bytea: { tsType: 'Buffer', jsonSchema: { type: 'string' } },
     inet: { tsType: 'string', jsonSchema: { type: 'string' } },
     cidr: { tsType: 'string', jsonSchema: { type: 'string' } },
     macaddr: { tsType: 'string', jsonSchema: { type: 'string' } },
