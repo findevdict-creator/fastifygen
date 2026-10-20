@@ -3,9 +3,10 @@ import { existsSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
-import { Command } from 'commander';
+import { Command, Option } from 'commander';
 import { ConfigError, ConfigLoader, type LoadedConfig } from './config/ConfigLoader.js';
 import { ConfigTemplate } from './config/ConfigTemplate.js';
+import type { OutputMode } from './config/types.js';
 import { DatabaseConnectionError, Generator } from './Generator.js';
 import { UiServer } from './ui-server/UiServer.js';
 
@@ -70,8 +71,12 @@ program
   .description('Read the database schema and write the Fastify API')
   .option('-c, --config <path>', 'path to config.json', 'config.json')
   .option('-o, --out <path>', 'output folder (overrides output.dir in the config)')
-  .action(async (options: { config: string; out?: string }) => {
+  .addOption(
+    new Option('-m, --mode <mode>', 'development or production (overrides output.mode in the config)').choices(['development', 'production']),
+  )
+  .action(async (options: { config: string; out?: string; mode?: OutputMode }) => {
     const loaded = await loadConfig(options.config);
+    if (options.mode) loaded.config.output.mode = options.mode;
     const outputDir = options.out ? path.resolve(options.out) : loaded.outputDir;
     const result = await new Generator(loaded.config).generate(outputDir);
     const count = (status: string) => result.files.filter((file) => file.status === status).length;
@@ -83,7 +88,8 @@ program
     const created = count('created') > 0 && count('kept') === 0;
     if (created) {
       const relative = path.relative(process.cwd(), outputDir) || '.';
-      console.error(`\nNext: cd ${relative} && npm install && cp .env.example .env && npm run dev`);
+      const next = result.mode === 'production' ? 'npm install && npm run build && npm start' : 'npm install && cp .env.example .env && npm run dev';
+      console.error(`\nNext: cd ${relative} && ${next}`);
     }
   });
 

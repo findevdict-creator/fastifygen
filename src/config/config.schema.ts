@@ -40,6 +40,12 @@ export const configSchema = {
       additionalProperties: false,
       properties: {
         dir: { type: 'string', default: './generated', description: 'Relative to config.json.' },
+        mode: {
+          type: 'string',
+          enum: ['development', 'production'],
+          default: 'development',
+          description: 'production leaves out files only used during development: the README, the dev token script and the dev scripts.',
+        },
       },
       default: {},
     },

@@ -15,7 +15,7 @@ export class ConfigTemplate {
     return {
       $schema: options.schemaPath ?? ConfigTemplate.DEFAULT_SCHEMA_PATH,
       database: { url: options.databaseUrl ?? '${DATABASE_URL}', schema: 'public' },
-      output: { dir: './generated' },
+      output: { dir: './generated', mode: 'development' },
       tables: { include: ['*'], exclude: ['knex_migrations', 'knex_migrations_lock'] },
       api: { prefix: '/items', defaultLimit: 100, maxLimit: 1000 },
       tenancy: { enabled: true, column: 'tenant_id', rls: true, settingName: 'app.tenant_id' },

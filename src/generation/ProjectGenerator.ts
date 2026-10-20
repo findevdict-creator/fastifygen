@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs';
 import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { GeneratorConfig } from '../config/types.js';
+import type { GeneratorConfig, OutputMode } from '../config/types.js';
 import type { DatabaseModel } from '../introspection/types.js';
 import { GENERATED_HEADER } from './emitters/headers.js';
 import { ModuleEmitter } from './emitters/ModuleEmitter.js';
@@ -20,6 +20,7 @@ export interface GenerationResult {
   permissions: Record<string, Record<string, string>>;
   /** True when nothing was written (a preview). */
   dryRun: boolean;
+  mode: OutputMode;
 }
 
 export type GenerateOptions = FileWriterOptions;
@@ -61,6 +62,13 @@ export class ProjectGenerator {
       await writer.write('sql/rls.sql', new RlsEmitter(this.config).emit(model), 'generated');
     }
 
+    const leftover = this.config.output.mode === 'production'
+      ? ProjectEmitter.DEVELOPMENT_ONLY.filter((file) => existsSync(path.join(outputDir, file)))
+      : [];
+    if (leftover.length > 0) {
+      warnings.push(`Development-only files from an earlier run are still in the folder: ${leftover.join(', ')}. Delete them if you don't need them.`);
+    }
+
     const kept = writer.files.filter((file) => file.status === 'kept').map((file) => file.path);
     if (kept.length > 0 && writer.files.some((file) => file.status === 'updated')) {
       warnings.push(`Kept ${kept.length} file(s) you own unchanged; update them by hand if the schema change affects them.`);
@@ -72,6 +80,7 @@ export class ProjectGenerator {
       warnings,
       permissions,
       dryRun: options.dryRun ?? false,
+      mode: this.config.output.mode,
     };
   }
 

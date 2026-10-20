@@ -141,6 +141,25 @@ describe.skipIf(!databaseUrl)('generated API (Postgres)', () => {
       expect(status('src/modules/company/CompanyRoutes.ts')).toBe('unchanged');
       expect(await readFile(controller, 'utf8')).toContain('// my change');
     });
+
+    it('leaves development-only files out in production mode', async () => {
+      const production = testConfig({ output: { mode: 'production' } });
+      const model = await new SchemaIntrospector(knex, production).introspect();
+      const preview = await new ProjectGenerator(production).generate(model, outputDir, { dryRun: true, includeContent: true });
+      const paths = preview.files.map((file) => file.path);
+
+      expect(preview.mode).toBe('production');
+      expect(paths).not.toContain('README.md');
+      expect(paths).not.toContain('scripts/token.ts');
+      expect(paths).toEqual(expect.arrayContaining(['package.json', '.env.example', 'src/server.ts', 'sql/rls.sql']));
+
+      const pkg = JSON.parse(preview.files.find((file) => file.path === 'package.json')!.content!);
+      expect(Object.keys(pkg.scripts)).toEqual(['build', 'start', 'typecheck']);
+      expect(pkg.devDependencies).not.toHaveProperty('tsx');
+
+      // This folder was generated in development mode, so its dev files are still there.
+      expect(preview.warnings).toContainEqual(expect.stringContaining('README.md, scripts/token.ts'));
+    });
   });
 
   describe('HTTP', () => {

@@ -26,9 +26,16 @@ export interface DatabaseConfig {
   schema: string;
 }
 
+/**
+ * - `development`: everything, including helpers for trying the API locally.
+ * - `production`: only what the API needs to build and run.
+ */
+export type OutputMode = 'development' | 'production';
+
 export interface OutputConfig {
   /** Folder the generated API is written to, relative to config.json. */
   dir: string;
+  mode: OutputMode;
 }
 
 export interface TablesConfig {

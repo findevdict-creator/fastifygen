@@ -50,6 +50,8 @@ curl -H "Authorization: Bearer $TOKEN" "localhost:3000/items/company?fields=name
 
 `npm run token` signs a development JWT with your `JWT_SECRET`. In production your identity provider issues the tokens; see `src/auth/AuthHook.ts`.
 
+When you're ready to deploy, generate with `--mode production` (or set `output.mode` to `production`). That leaves out what only helps during development: the README, `scripts/token.ts`, the `dev` and `token` npm scripts and `tsx`. The API's code is the same in both modes. Switching an existing folder to production doesn't delete anything; `generate` lists the development files still there so you can remove them.
+
 When the database changes, run `generate` again. Routes, schemas and types follow the new columns, and your own code is left alone (see [What `generate` writes](#what-generate-writes)).
 
 ### Commands
@@ -58,7 +60,7 @@ When the database changes, run `generate` again. Routes, schemas and types follo
 | --- | --- |
 | `fastifygen init [-c config.json] [--database-url <url>] [--force]` | Writes a starter config. Refuses to overwrite without `--force`. |
 | `fastifygen introspect [-c config.json] [-o model.json]` | Prints what it read from the database as JSON. |
-| `fastifygen generate [-c config.json] [-o ./api]` | Writes the Fastify project. `-o` overrides `output.dir`. |
+| `fastifygen generate [-c config.json] [-o ./api] [-m production]` | Writes the Fastify project. `-o` overrides `output.dir`, `-m` overrides `output.mode`. |
 | `fastifygen ui [-c config.json] [-p 4321] [--no-open]` | Opens the web UI (below). |
 
 All commands load `.env` from the current folder first (`--env-file` to change it). A missing config or an unreachable database is reported in one line.
@@ -87,7 +89,7 @@ Every setting lives in one file. Only `database` is required; everything else ha
 {
   "$schema": "./node_modules/fastifygen/schema/config.schema.json",
   "database": { "url": "${DATABASE_URL}", "schema": "public" },
-  "output": { "dir": "./generated" },
+  "output": { "dir": "./generated", "mode": "development" },
   "tables": { "include": ["*"], "exclude": ["knex_migrations", "knex_migrations_lock"] },
   "api": { "prefix": "/items", "defaultLimit": 100, "maxLimit": 1000 },
   "tenancy": { "enabled": true, "column": "tenant_id", "rls": true, "settingName": "app.tenant_id" },
@@ -104,6 +106,7 @@ Every setting lives in one file. Only `database` is required; everything else ha
 | --- | --- |
 | `database` | Connection (`url`, or `host`/`port`/`user`/`password`/`database`/`ssl`) and the Postgres `schema` to read. |
 | `output.dir` | Where the generated API is written, relative to `config.json`. |
+| `output.mode` | `development` (default) or `production`, which leaves out development-only files. |
 | `tables` | `include` / `exclude` glob patterns (`*` wildcard). `exclude` wins. |
 | `api` | Route prefix and pagination limits. |
 | `tenancy` | Tables with `column` are tenant-scoped; `rls` generates row-level security policies reading `settingName`. |
@@ -117,7 +120,9 @@ Every setting lives in one file. Only `database` is required; everything else ha
 
 ```
 my-api/
-  package.json, tsconfig.json, .env.example, README.md
+  package.json, tsconfig.json, .env.example
+  README.md                        how to run, test tokens and RLS setup (development mode)
+  scripts/token.ts                 development JWT helper (development mode, auth.mode jwt)
   sql/rls.sql                      row-level security policies (when tenancy.rls)
   src/
     server.ts, app.ts, db.ts       Application class, Fastify setup, Knex connection
@@ -126,7 +131,6 @@ my-api/
     schema.ts                      tables, columns and relations the API serves
     permissions.ts                 every permission, per table and action
     modules/index.ts               registers each table under api.prefix
-  scripts/token.ts                 development JWT helper (auth.mode jwt)
     modules/company/
       CompanyRoutes.ts             full fastify.route() declarations
       company.schemas.ts           request and response JSON Schemas
