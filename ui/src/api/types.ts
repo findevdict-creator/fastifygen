@@ -55,4 +55,5 @@ export interface GenerationResult {
   warnings: string[];
   permissions: Record<string, Record<string, string>>;
   dryRun: boolean;
+  mode: 'development' | 'production';
 }

@@ -15,9 +15,22 @@ export interface ProjectInput {
 
 /** Emits the project-level files: app, server, database, auth, schema, permissions and module wiring. */
 export class ProjectEmitter {
+  /** Files only written in development mode. */
+  static readonly DEVELOPMENT_ONLY = ['README.md', 'scripts/token.ts'];
+
   constructor(private readonly config: GeneratorConfig) {}
 
   emit(input: ProjectInput): ModuleFile[] {
+    const files = this.allFiles(input);
+    if (this.development) return files;
+    return files.filter((file) => !ProjectEmitter.DEVELOPMENT_ONLY.includes(file.path));
+  }
+
+  private get development(): boolean {
+    return this.config.output.mode === 'development';
+  }
+
+  private allFiles(input: ProjectInput): ModuleFile[] {
     return [
       { path: 'package.json', content: this.packageJson(input.name), kind: 'scaffold' },
       { path: 'tsconfig.json', content: this.tsconfig(), kind: 'scaffold' },
@@ -51,11 +64,11 @@ export class ProjectEmitter {
       private: true,
       type: 'module',
       scripts: {
-        dev: 'tsx watch src/server.ts',
+        ...(this.development ? { dev: 'tsx watch src/server.ts' } : {}),
         build: 'tsc',
         start: 'node dist/server.js',
         typecheck: 'tsc --noEmit',
-        ...(this.config.auth.mode === 'jwt' ? { token: 'tsx scripts/token.ts' } : {}),
+        ...(this.development && this.config.auth.mode === 'jwt' ? { token: 'tsx scripts/token.ts' } : {}),
       },
       engines: { node: '>=20.12' },
       dependencies: Object.fromEntries(Object.entries(dependencies).sort(([a], [b]) => a.localeCompare(b))),
@@ -63,7 +76,7 @@ export class ProjectEmitter {
         '@types/node': '^22.0.0',
         '@types/pg': '^8.23.0',
         '@types/qs': '^6.15.0',
-        tsx: '^4.23.0',
+        ...(this.development ? { tsx: '^4.23.0' } : {}),
         typescript: '^7.0.0',
       },
     };

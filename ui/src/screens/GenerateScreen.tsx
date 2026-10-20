@@ -170,7 +170,17 @@ function GenerationDone({ result }: { result: GenerationResult }) {
         <span className="pill ok">done</span>
       </div>
       <div className="card-body">
-        {fresh ? (
+        {fresh && result.mode === 'production' ? (
+          <>
+            <p>
+              Next, build and start the API. Set the variables listed in <code>.env.example</code> in its environment first:
+            </p>
+            <pre>{`cd ${result.outputDir}
+npm install
+npm run build
+npm start`}</pre>
+          </>
+        ) : fresh ? (
           <>
             <p>Next, install and start the API:</p>
             <pre>{`cd ${result.outputDir}

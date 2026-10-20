@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { mkdtemp, readFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -8,6 +9,7 @@ import { describe, expect, it } from 'vitest';
 import { ConfigLoader } from '../src/config/ConfigLoader.js';
 import { ConfigTemplate } from '../src/config/ConfigTemplate.js';
 import { DatabaseConnectionError, Generator } from '../src/Generator.js';
+import { databaseUrl } from './helpers/database.js';
 
 const run = promisify(execFile);
 const repoRoot = fileURLToPath(new URL('..', import.meta.url));
@@ -67,5 +69,24 @@ describe('fastifygen CLI', () => {
     const result = await fastifygen(dir, ['introspect'], { DATABASE_URL: 'postgres://nobody:x@127.0.0.1:1/none' });
     expect(result.code).toBe(1);
     expect(result.stderr.trim().split('\n')).toEqual([expect.stringMatching(/^Cannot connect to the database: /)]);
+  }, 30_000);
+
+  it('only accepts development or production as the mode', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'fastifygen-cli-'));
+    const result = await fastifygen(dir, ['generate', '--mode', 'staging']);
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain('Allowed choices are development, production');
+  }, 30_000);
+
+  it.skipIf(!databaseUrl)('generates without development files with --mode production', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'fastifygen-cli-'));
+    await fastifygen(dir, ['init']);
+    const result = await fastifygen(dir, ['generate', '--mode', 'production'], { DATABASE_URL: databaseUrl! });
+    expect(result.code).toBe(0);
+    expect(result.stderr).toContain('Next: cd generated && npm install && npm run build && npm start');
+    expect(existsSync(path.join(dir, 'generated/src/server.ts'))).toBe(true);
+    expect(existsSync(path.join(dir, 'generated/scripts/token.ts'))).toBe(false);
+    expect(existsSync(path.join(dir, 'generated/README.md'))).toBe(false);
+    expect(JSON.parse(await readFile(path.join(dir, 'config.json'), 'utf8')).output.mode).toBe('development');
   }, 30_000);
 });
